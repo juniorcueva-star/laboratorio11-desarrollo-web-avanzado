@@ -1,363 +1,144 @@
-"use client"
+"use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ProjectForm } from "@/components/ProjectForm"
-import { TasksTable } from "@/components/TasksTable"
+import { useEffect, useMemo, useState } from "react";
+import { es } from "date-fns/locale";
+import { Activity, ArrowDownRight, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Command, Cpu, FolderKanban, LayoutDashboard, MoreHorizontal, Pencil, Plus, Search, Settings2, Sparkles, Trash2, Users, X } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Spinner } from "@/components/ui/spinner";
+import { Calendar } from "@/components/ui/calendar";
+import { Pagination, PaginationContent, PaginationItem } from "@/components/ui/pagination";
+import "./dashboard.css";
+
+type Project = { id: string; name: string; description: string; category: string; status: string; memberIds: string[] };
+type Member = { id: string; userId: string; role: string; name: string; email: string; position: string; birthdate: string; phone: string; projectId: string; isActive: boolean };
+type Task = { id: string; description: string; projectId: string; status: string; priority: string; userId: string; deadline: string };
+type Data = { projects: Project[]; members: Member[]; tasks: Task[]; settings: { workspace: string; notifications: boolean; compact: boolean } };
+type Modal = { kind: "project" | "member" | "task"; id?: string } | { kind: "detail"; id: string } | null;
+type Tab = "overview" | "projects" | "team" | "tasks" | "settings";
+const seed: Data = {
+ projects: [
+  { id: "p1", name: "Atlas Commerce", description: "Una experiencia de compra para la nueva generación.", category: "Producto digital", status: "En progreso", memberIds: ["m1", "m2"] },
+  { id: "p2", name: "Orbit Analytics", description: "Datos claros para decisiones que mueven el futuro.", category: "Analítica", status: "En progreso", memberIds: ["m1", "m3"] },
+  { id: "p3", name: "Nova Mobile", description: "Una interfaz móvil conectada con las personas.", category: "Aplicación móvil", status: "Planeado", memberIds: ["m2"] },
+ ],
+ members: [
+  { id: "m1", userId: "USR-001", name: "Junior Cueva", email: "junior@ejemplo.com", role: "Administrador", position: "Desarrollador", birthdate: "2002-04-12", phone: "999 123 456", projectId: "p1", isActive: true },
+  { id: "m2", userId: "USR-002", name: "Valeria Torres", email: "valeria@ejemplo.com", role: "Miembro", position: "Diseñadora", birthdate: "2001-08-20", phone: "999 234 567", projectId: "p1", isActive: true },
+  { id: "m3", userId: "USR-003", name: "Mateo Rojas", email: "mateo@ejemplo.com", role: "Miembro", position: "Analista", birthdate: "2000-05-04", phone: "999 345 678", projectId: "p2", isActive: true },
+ ],
+ tasks: [
+  { id: "t1", description: "Diseñar la experiencia principal", projectId: "p1", status: "En progreso", priority: "Alta", userId: "m2", deadline: "2026-11-15" },
+  { id: "t2", description: "Conectar panel de métricas", projectId: "p2", status: "Pendiente", priority: "Media", userId: "m3", deadline: "2026-11-20" },
+  { id: "t3", description: "Definir arquitectura inicial", projectId: "p1", status: "Completada", priority: "Alta", userId: "m1", deadline: "2026-11-05" },
+  { id: "t4", description: "Revisar prototipo móvil", projectId: "p3", status: "Pendiente", priority: "Baja", userId: "m2", deadline: "2026-11-25" },
+ ], settings: { workspace: "NEXUS / WORKSPACE", notifications: true, compact: false },
+};
+const uid = () => crypto.randomUUID();
+const tabs: { id: Tab; label: string; icon: typeof Activity }[] = [
+ { id: "overview", label: "Resumen", icon: LayoutDashboard }, { id: "projects", label: "Proyectos", icon: FolderKanban },
+ { id: "team", label: "Equipo", icon: Users }, { id: "tasks", label: "Tareas", icon: CheckCircle2 }, { id: "settings", label: "Configuración", icon: Settings2 },
+];
+const emptyProject = (): Project => ({ id: "", name: "", description: "", category: "Producto digital", status: "Planeado", memberIds: [] });
+const emptyMember = (): Member => ({ id: "", userId: "", role: "Miembro", name: "", email: "", position: "", birthdate: "", phone: "", projectId: "", isActive: true });
+const emptyTask = (): Task => ({ id: "", description: "", projectId: "", status: "Pendiente", priority: "Media", userId: "", deadline: "" });
+const projectName = (data: Data, id: string) => data.projects.find(p => p.id === id)?.name || "Sin proyecto";
+const memberName = (data: Data, id: string) => data.members.find(m => m.id === id)?.name || "Sin asignar";
+const initials = (name: string) => name.split(" ").slice(0, 2).map(x => x[0]).join("").toUpperCase();
 
 export default function DashboardPage() {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-slate-900 mb-2">
-            Dashboard de Proyectos
-          </h1>
-          <p className="text-slate-600">
-            Gestiona tus proyectos y tareas con shadcn/ui
-          </p>
-          <div className="pt-4"><ProjectForm /></div>
-        </div>
-
-        {/* Tabs Navigation */}
-        <Tabs defaultValue="overview" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="overview">Resumen</TabsTrigger>
-            <TabsTrigger value="projects">Proyectos</TabsTrigger>
-            <TabsTrigger value="team">Equipo</TabsTrigger>
-            <TabsTrigger value="tasks">Tareas</TabsTrigger>
-            <TabsTrigger value="settings">Configuración</TabsTrigger>
-          </TabsList>
-
-          {/* Tab: Overview */}
-          <TabsContent value="overview" className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {/* Stat Cards */}
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    Total Proyectos
-                  </CardTitle>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    className="h-4 w-4 text-muted-foreground"
-                  >
-                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                    <circle cx="9" cy="7" r="4" />
-                    <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-                  </svg>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">12</div>
-                  <p className="text-xs text-muted-foreground">
-                    +2 desde el mes pasado
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    Tareas Completadas
-                  </CardTitle>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    className="h-4 w-4 text-muted-foreground"
-                  >
-                    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-                  </svg>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">143</div>
-                  <p className="text-xs text-muted-foreground">
-                    +19% desde la semana pasada
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    Horas Trabajadas
-                  </CardTitle>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    className="h-4 w-4 text-muted-foreground"
-                  >
-                    <rect width="20" height="14" x="2" y="5" rx="2" />
-                    <path d="M2 10h20" />
-                  </svg>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">324h</div>
-                  <p className="text-xs text-muted-foreground">
-                    +12h desde ayer
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    Miembros Activos
-                  </CardTitle>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    className="h-4 w-4 text-muted-foreground"
-                  >
-                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                    <circle cx="9" cy="7" r="4" />
-                    <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-                  </svg>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">8</div>
-                  <p className="text-xs text-muted-foreground">
-                    +1 nuevo miembro
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Recent Activity */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Actividad Reciente</CardTitle>
-                <CardDescription>
-                  Últimas actualizaciones de tus proyectos
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {[
-                    { user: "María García", action: "completó la tarea", task: "Diseño de UI", time: "Hace 5 min" },
-                    { user: "Juan Pérez", action: "comentó en", task: "API Backend", time: "Hace 1 hora" },
-                    { user: "Ana López", action: "creó un nuevo", task: "Proyecto Mobile", time: "Hace 2 horas" },
-                    { user: "Carlos Ruiz", action: "actualizó", task: "Documentación", time: "Hace 3 horas" },
-                  ].map((activity, i) => (
-                    <div key={i} className="flex items-center gap-4">
-                      <Avatar>
-                        <AvatarFallback>{activity.user[0]}</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium leading-none">
-                          {activity.user}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {activity.action} <span className="font-medium">{activity.task}</span>
-                        </p>
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {activity.time}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Tab: Projects */}
-          <TabsContent value="projects" className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {[
-                {
-                  title: "E-commerce Platform",
-                  description: "Plataforma de comercio electrónico con Next.js",
-                  status: "En progreso",
-                  progress: 65,
-                  team: 5,
-                },
-                {
-                  title: "Mobile App",
-                  description: "Aplicación móvil con React Native",
-                  status: "En revisión",
-                  progress: 90,
-                  team: 3,
-                },
-                {
-                  title: "Dashboard Analytics",
-                  description: "Panel de análisis con visualizaciones",
-                  status: "Planificado",
-                  progress: 20,
-                  team: 4,
-                },
-                {
-                  title: "API Gateway",
-                  description: "Microservicios con Node.js",
-                  status: "En progreso",
-                  progress: 45,
-                  team: 6,
-                },
-                {
-                  title: "Design System",
-                  description: "Librería de componentes reutilizables",
-                  status: "Completado",
-                  progress: 100,
-                  team: 2,
-                },
-                {
-                  title: "Marketing Website",
-                  description: "Sitio web institucional",
-                  status: "En progreso",
-                  progress: 75,
-                  team: 3,
-                },
-              ].map((project, i) => (
-                <Card key={i}>
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1">
-                        <CardTitle className="text-lg">{project.title}</CardTitle>
-                        <CardDescription>{project.description}</CardDescription>
-                      </div>
-                      <Badge
-                        variant={
-                          project.status === "Completado"
-                            ? "default"
-                            : project.status === "En revisión"
-                            ? "secondary"
-                            : "outline"
-                        }
-                      >
-                        {project.status}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <div>
-                        <div className="flex items-center justify-between text-sm mb-2">
-                          <span className="text-muted-foreground">Progreso</span>
-                          <span className="font-medium">{project.progress}%</span>
-                        </div>
-                        <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-primary transition-all"
-                            style={{ width: `${project.progress}%` }}
-                          />
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="h-4 w-4"
-                          >
-                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                            <circle cx="9" cy="7" r="4" />
-                            <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-                          </svg>
-                          {project.team} miembros
-                        </div>
-                        <Button size="sm" variant="ghost">
-                          Ver detalles
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </TabsContent>
-
-          {/* Tab: Team */}
-          <TabsContent value="team" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Miembros del Equipo</CardTitle>
-                <CardDescription>
-                  Gestiona los miembros de tu equipo y sus roles
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {[
-                    { name: "María García", role: "Frontend Developer", email: "maria@example.com", status: "Activo" },
-                    { name: "Juan Pérez", role: "Backend Developer", email: "juan@example.com", status: "Activo" },
-                    { name: "Ana López", role: "UI/UX Designer", email: "ana@example.com", status: "Ausente" },
-                    { name: "Carlos Ruiz", role: "DevOps Engineer", email: "carlos@example.com", status: "Activo" },
-                    { name: "Laura Martínez", role: "Project Manager", email: "laura@example.com", status: "Activo" },
-                  ].map((member, i) => (
-                    <div key={i} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="flex items-center gap-4">
-                        <Avatar>
-                          <AvatarFallback>{member.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="text-sm font-medium">{member.name}</p>
-                          <p className="text-sm text-muted-foreground">{member.role}</p>
-                          <p className="text-xs text-muted-foreground">{member.email}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={member.status === "Activo" ? "default" : "secondary"}>
-                          {member.status}
-                        </Badge>
-                        <Button size="sm" variant="outline">
-                          Editar
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Tab: Settings */}
-          <TabsContent value="settings">
-            <Card>
-              <CardHeader>
-                <CardTitle>Configuración</CardTitle>
-                <CardDescription>
-                  Administra las preferencias de tu cuenta
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  Configuración en desarrollo...
-                </p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-          <TabsContent value="tasks" className="space-y-4"><Card><CardHeader><CardTitle>Gestión de Tareas</CardTitle><CardDescription>Administra todas las tareas de tus proyectos</CardDescription></CardHeader><CardContent><TasksTable /></CardContent></Card></TabsContent>
-        </Tabs>
-      </div>
-    </div>
-  )
+ const [data, setData] = useState<Data>(seed);
+ const [tab, setTab] = useState<Tab>("overview");
+ const [modal, setModal] = useState<Modal>(null);
+ const [project, setProject] = useState<Project>(emptyProject());
+ const [member, setMember] = useState<Member>(emptyMember());
+ const [task, setTask] = useState<Task>(emptyTask());
+ const [query, setQuery] = useState("");
+ const [page, setPage] = useState(1);
+ const [error, setError] = useState("");
+ const [busy, setBusy] = useState(false);
+ const [notice, setNotice] = useState("");
+ const [showCalendar, setShowCalendar] = useState(false);
+ const [ready, setReady] = useState(false);
+ useEffect(() => { try { const saved = localStorage.getItem("nexus-dashboard-v1"); if (saved) setData(JSON.parse(saved)); } catch { /* use initial data */ } setReady(true); }, []);
+ useEffect(() => { if (ready) localStorage.setItem("nexus-dashboard-v1", JSON.stringify(data)); }, [data, ready]);
+ useEffect(() => { setPage(1); }, [query, tab]);
+ const filteredTasks = useMemo(() => data.tasks.filter(t => `${t.description} ${projectName(data,t.projectId)} ${memberName(data,t.userId)}`.toLowerCase().includes(query.toLowerCase())), [data, query]);
+ const pages = Math.max(1, Math.ceil(filteredTasks.length / 4));
+ const visibleTasks = filteredTasks.slice((Math.min(page,pages)-1)*4, Math.min(page,pages)*4);
+ const completed = data.tasks.filter(t => t.status === "Completada").length;
+ const completion = data.tasks.length ? Math.round(completed / data.tasks.length * 100) : 0;
+ const openEditor = (kind: "project" | "member" | "task", id?: string) => {
+  setError(""); setShowCalendar(false);
+  if (kind === "project") setProject(id ? structuredClone(data.projects.find(p => p.id === id)!) : emptyProject());
+  if (kind === "member") setMember(id ? structuredClone(data.members.find(m => m.id === id)!) : emptyMember());
+  if (kind === "task") setTask(id ? structuredClone(data.tasks.find(t => t.id === id)!) : emptyTask());
+  setModal({ kind, id });
+ };
+ const save = (e: React.FormEvent) => {
+  e.preventDefault(); if (!modal || modal.kind === "detail" || busy) return;
+  if (modal.kind === "project" && !project.name.trim()) return setError("Escribe un nombre para el proyecto.");
+  if (modal.kind === "member" && (!member.name.trim() || !member.userId.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(member.email))) return setError("Ingresa el identificador, nombre y un correo válido.");
+  if (modal.kind === "member" && data.members.some(m => m.userId === member.userId && m.id !== member.id)) return setError("Este identificador ya está registrado.");
+  if (modal.kind === "task" && (!task.description.trim() || !task.projectId || !task.userId || !task.deadline)) return setError("Completa la descripción, proyecto, responsable y fecha límite.");
+  setError(""); setBusy(true);
+  window.setTimeout(() => {
+   setData(prev => {
+    if (modal.kind === "project") { const item = { ...project, id: project.id || uid() }; return { ...prev, projects: modal.id ? prev.projects.map(p => p.id === modal.id ? item : p) : [...prev.projects,item] }; }
+    if (modal.kind === "member") { const item = { ...member, id: member.id || uid() }; return { ...prev, members: modal.id ? prev.members.map(m => m.id === modal.id ? item : m) : [...prev.members,item] }; }
+    const item = { ...task, id: task.id || uid() }; return { ...prev, tasks: modal.id ? prev.tasks.map(t => t.id === modal.id ? item : t) : [...prev.tasks,item] };
+   });
+   setBusy(false); setModal(null); setNotice("Cambios guardados correctamente"); window.setTimeout(() => setNotice(""), 3000);
+  }, 650);
+ };
+ const remove = (kind: "project" | "member" | "task", id: string) => {
+  if (!window.confirm(kind === "project" ? "¿Eliminar este proyecto y sus tareas? Los miembros quedarán sin proyecto." : "¿Deseas eliminar este registro?")) return;
+  setData(prev => kind === "project" ? { ...prev, projects: prev.projects.filter(x => x.id !== id), tasks: prev.tasks.filter(x => x.projectId !== id), members: prev.members.map(x => x.projectId === id ? { ...x, projectId: "" } : x) } : kind === "member" ? { ...prev, members: prev.members.filter(x => x.id !== id), projects: prev.projects.map(x => ({ ...x, memberIds: x.memberIds.filter(m => m !== id) })), tasks: prev.tasks.map(x => x.userId === id ? { ...x, userId: "" } : x) } : { ...prev, tasks: prev.tasks.filter(x => x.id !== id) });
+  setModal(null); setNotice("Registro eliminado"); window.setTimeout(() => setNotice(""), 3000);
+ };
+ const dateValue = modal?.kind === "member" ? member.birthdate : task.deadline;
+ const selectedDate = dateValue ? new Date(dateValue + "T12:00:00") : undefined;
+ const selectDate = (d: Date | undefined) => { if (!d) return; const value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; if (modal?.kind === "member") setMember({...member,birthdate:value}); else setTask({...task,deadline:value}); setShowCalendar(false); };
+ const nav = (id: Tab) => { setQuery(""); setTab(id); };
+ return <main className={`nexus ${data.settings.compact ? "compact" : ""}`}>
+  <div className="noise" aria-hidden="true" />
+  <aside className="sidebar">
+   <div className="brand"><div className="brand-icon"><Command size={20}/></div><div><strong>NEXUS<span>.</span></strong><small>PROJECT CONTROL</small></div></div>
+   <div className="workspace"><span className="workspace-icon"><Cpu size={17}/></span><span><strong>{data.settings.workspace || "Espacio de trabajo"}</strong><small>Panel principal</small></span><MoreHorizontal size={17}/></div>
+   <div className="side-label">ESPACIO DE TRABAJO <span>01</span></div>
+   <nav aria-label="Navegación principal">{tabs.map(({id,label,icon:Icon}) => <button key={id} onClick={() => nav(id)} className={`nav-item ${tab === id ? "active" : ""}`}><Icon size={18}/><span>{label}</span>{id === "tasks" && <em>{data.tasks.length}</em>}</button>)}</nav>
+   <div className="side-bottom"><div className="signal"><span className="pulse-dot"/> SISTEMA EN LÍNEA</div><div className="profile"><div className="avatar avatar-main">JC</div><div><strong>Junior Cueva</strong><small>Administrador</small></div><MoreHorizontal size={18}/></div></div>
+  </aside>
+  <section className="main-area">
+   <header className="topbar"><div className="breadcrumb">WORKSPACE <span>/</span> <strong>{tabs.find(t => t.id === tab)?.label.toUpperCase()}</strong></div><div className="top-actions"><span className="live"><i/> EN VIVO</span><div className="top-separator"/><div className="avatar avatar-main">JC</div></div></header>
+   <div className="content-wrap">
+    <div className="page-heading"><div><div className="eyebrow"><span/> CENTRO DE OPERACIONES <span className="eyebrow-code">/ 01—05</span></div><h1>{tab === "overview" ? <>Todo bajo <span>control</span></> : tabs.find(t => t.id === tab)?.label}<span className="heading-dot">.</span></h1><p>{tab === "overview" ? "Una vista clara de todo lo que tu equipo está creando." : tab === "projects" ? "Ideas en movimiento, proyectos con propósito." : tab === "team" ? "Las personas detrás de cada gran idea." : tab === "tasks" ? "Cada paso cuenta. Mantén el ritmo." : "Tu espacio, a tu manera."}</p></div>{tab !== "settings" && <button className="primary-btn heading-action" onClick={() => openEditor(tab === "team" ? "member" : tab === "tasks" ? "task" : "project")}><Plus size={17}/> {tab === "team" ? "Nuevo miembro" : tab === "tasks" ? "Nueva tarea" : "Nuevo proyecto"}<ArrowRight size={16}/></button>}</div>
+    {notice && <div className="toast"><Check size={16}/>{notice}</div>}
+    {tab === "overview" && <div className="view-enter">
+     <div className="hero"><div className="hero-copy"><div className="hero-label"><Sparkles size={14}/> TU ESPACIO DE TRABAJO</div><h2>Las buenas ideas<br/><span>merecen avanzar.</span></h2><p>Organiza proyectos, conecta a tu equipo y convierte cada objetivo en progreso real.</p><button onClick={() => nav("projects")} className="hero-link">Explorar proyectos <ArrowRight size={16}/></button></div><div className="orbit-art" aria-hidden="true"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="orbit orbit-three"/><div className="orbit-core"><Command size={39}/></div><i className="orbit-dot dot-one"/><i className="orbit-dot dot-two"/><i className="orbit-dot dot-three"/></div><span className="hero-index">N / 001</span></div>
+     <div className="section-heading"><div><div className="micro-label">UNA MIRADA GENERAL</div><h2>Tu espacio en números <span>✳</span></h2></div><span className="section-note">DATOS ACTUALIZADOS</span></div>
+     <div className="metrics"><Metric icon={FolderKanban} label="Proyectos" value={data.projects.length} note="En tu espacio" accent="violet"/><Metric icon={Users} label="Equipo activo" value={data.members.filter(m=>m.isActive).length} note="Personas conectadas" accent="cyan"/><Metric icon={CircleDashed} label="Tareas abiertas" value={data.tasks.length-completed} note="Por completar" accent="orange"/><Metric icon={CheckCircle2} label="Completadas" value={completed} note={`${completion}% del total`} accent="lime"/></div>
+     <div className="overview-grid"><section className="panel recent-panel"><div className="panel-head"><div><div className="micro-label">LO QUE ESTÁ PASANDO</div><h3>Proyectos en órbita</h3></div><button className="text-button" onClick={() => nav("projects")}>Ver todos <ArrowRight size={15}/></button></div>{data.projects.length ? data.projects.slice(0,3).map((p,i) => <button key={p.id} className="project-row" onClick={() => setModal({kind:"detail",id:p.id})}><span className={`project-symbol symbol-${i%3}`}><FolderKanban size={18}/></span><span className="row-title"><strong>{p.name}</strong><small>{p.category}</small></span><span className="status"><i/> {p.status}</span><ArrowRight size={16}/></button>) : <Empty text="Aún no hay proyectos. Crea el primero."/>}</section>
+      <section className="panel progress-panel"><div className="micro-label">TU PROGRESO</div><h3>Pequeños pasos.<br/>Grandes avances.</h3><div className="progress-ring" style={{background:`conic-gradient(#c4f66b ${completion}%, #242a35 0)`}}><div><strong>{completion}%</strong><span>completado</span></div></div><p>{completed} de {data.tasks.length} tareas completadas</p><button className="text-button" onClick={() => nav("tasks")}>Ver tareas <ArrowRight size={15}/></button></section></div>
+    </div>}
+    {tab === "projects" && <div className="view-enter"><div className="toolbar"><div><div className="micro-label">TU PORTAFOLIO</div><h2>Todos los proyectos <span className="count">{String(data.projects.length).padStart(2,"0")}</span></h2></div></div><div className="project-grid">{data.projects.map((p,i) => { const projectTasks=data.tasks.filter(t=>t.projectId===p.id); const done=projectTasks.filter(t=>t.status==="Completada").length; const percent=projectTasks.length ? Math.round(done/projectTasks.length*100):0; return <article className="project-card" key={p.id}><div className="card-top"><span className={`project-symbol symbol-${i%3}`}><FolderKanban size={20}/></span><span className="status"><i/> {p.status}</span></div><div className="project-category">{p.category.toUpperCase()}</div><h3>{p.name}</h3><p>{p.description || "Sin descripción por ahora."}</p><div className="project-progress"><span>PROGRESO</span><strong>{percent}%</strong></div><div className="bar"><i style={{width:`${percent}%`}}/></div><div className="card-bottom"><div className="avatar-stack">{p.memberIds.slice(0,3).map(id=><span key={id} className="mini-avatar" title={memberName(data,id)}>{initials(memberName(data,id))}</span>)}<small>{p.memberIds.length} miembros</small></div><button className="round-button" aria-label={`Ver detalles de ${p.name}`} onClick={()=>setModal({kind:"detail",id:p.id})}><ArrowRight size={17}/></button></div><div className="card-actions"><button onClick={()=>openEditor("project",p.id)}><Pencil size={14}/> Editar</button><button onClick={()=>remove("project",p.id)}><Trash2 size={14}/> Eliminar</button></div></article>})}{!data.projects.length && <Empty text="Aún no tienes proyectos. Crea el primero."/>}</div></div>}
+    {tab === "team" && <div className="view-enter"><div className="toolbar"><div><div className="micro-label">PERSONAS QUE IMPULSAN IDEAS</div><h2>Miembros del equipo <span className="count">{String(data.members.length).padStart(2,"0")}</span></h2></div></div><div className="member-grid">{data.members.map((m,i)=><article className="member-card" key={m.id}><div className="member-card-top"><div className={`member-avatar member-color-${i%3}`}>{initials(m.name)}</div><span className={`member-status ${m.isActive ? "" : "inactive"}`}><i/>{m.isActive ? "Activo" : "Inactivo"}</span></div><h3>{m.name}</h3><p>{m.position || "Sin cargo"}</p><div className="member-details"><div><span>CORREO</span><strong>{m.email}</strong></div><div><span>PROYECTO</span><strong>{projectName(data,m.projectId)}</strong></div><div><span>ROL</span><strong>{m.role}</strong></div></div><div className="card-actions"><button onClick={()=>openEditor("member",m.id)}><Pencil size={14}/> Editar</button><button onClick={()=>remove("member",m.id)}><Trash2 size={14}/> Eliminar</button></div></article>)}{!data.members.length && <Empty text="Aún no hay miembros en el equipo."/>}</div></div>}
+    {tab === "tasks" && <div className="view-enter"><div className="toolbar task-toolbar"><div><div className="micro-label">SIGUE EL PROGRESO</div><h2>Tablero de tareas <span className="count">{String(data.tasks.length).padStart(2,"0")}</span></h2></div><label className="search-box"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar tarea..." aria-label="Buscar tarea"/></label></div><section className="panel table-panel"><div className="table-scroll"><table><thead><tr><th>TAREA</th><th>PROYECTO</th><th>ESTADO</th><th>PRIORIDAD</th><th>RESPONSABLE</th><th>FECHA LÍMITE</th><th><span className="sr-only">Acciones</span></th></tr></thead><tbody>{visibleTasks.map(t=><tr key={t.id}><td><strong>{t.description}</strong><small>#{t.id.slice(0,6).toUpperCase()}</small></td><td>{projectName(data,t.projectId)}</td><td><span className={`tag ${t.status === "Completada" ? "tag-green" : t.status === "En progreso" ? "tag-purple" : "tag-muted"}`}><i/>{t.status}</span></td><td><span className={`priority priority-${t.priority.toLowerCase()}`}>● {t.priority}</span></td><td><span className="person-cell"><span className="mini-avatar">{initials(memberName(data,t.userId))}</span>{memberName(data,t.userId)}</span></td><td>{t.deadline || "—"}</td><td><div className="row-actions"><button aria-label={`Editar ${t.description}`} onClick={()=>openEditor("task",t.id)}><Pencil size={15}/></button><button aria-label={`Eliminar ${t.description}`} onClick={()=>remove("task",t.id)}><Trash2 size={15}/></button></div></td></tr>)}</tbody></table></div>{!visibleTasks.length && <Empty text="No hay tareas para mostrar."/>}<div className="pagination-bar"><span>Mostrando {visibleTasks.length} de {filteredTasks.length} tareas</span><Pagination className="pagination-control"><PaginationContent><PaginationItem><button aria-label="Página anterior" disabled={page<=1} onClick={()=>setPage(Math.max(1,page-1))}><ChevronLeft size={16}/></button></PaginationItem><PaginationItem><span className="page-number">{Math.min(page,pages)} / {pages}</span></PaginationItem><PaginationItem><button aria-label="Página siguiente" disabled={page>=pages} onClick={()=>setPage(page+1)}><ChevronRight size={16}/></button></PaginationItem></PaginationContent></Pagination></div></section></div>}
+    {tab === "settings" && <div className="view-enter settings-layout"><section className="panel settings-panel"><div className="micro-label">PREFERENCIAS DEL ESPACIO</div><h2>Configuración general</h2><p>Personaliza cómo se ve y funciona tu espacio de trabajo.</p><label className="field"><span>Nombre del espacio</span><input value={data.settings.workspace} onChange={e=>setData({...data,settings:{...data.settings,workspace:e.target.value}})} /></label><div className="setting-row"><div><strong>Notificaciones</strong><small>Recibe avisos sobre la actividad de tu equipo</small></div><button role="switch" aria-checked={data.settings.notifications} className={`toggle ${data.settings.notifications?"on":""}`} onClick={()=>setData({...data,settings:{...data.settings,notifications:!data.settings.notifications}})}><i/></button></div><div className="setting-row"><div><strong>Vista compacta</strong><small>Reduce los espacios del panel</small></div><button role="switch" aria-checked={data.settings.compact} className={`toggle ${data.settings.compact?"on":""}`} onClick={()=>setData({...data,settings:{...data.settings,compact:!data.settings.compact}})}><i/></button></div><button className="primary-btn" onClick={()=>{setNotice("Configuración guardada");window.setTimeout(()=>setNotice(""),3000)}}><Check size={16}/> Guardar cambios</button></section><aside className="settings-note"><Sparkles size={19}/><h3>Tu espacio evoluciona contigo.</h3><p>Estos ajustes son una simulación y se guardan en este navegador.</p></aside></div>}
+    <footer className="footer"><span>© 2026 NEXUS STUDIO <i>✳</i> CREADO PARA AVANZAR</span><span>HECHO CON INTENCIÓN <span>↗</span></span></footer>
+   </div>
+  </section>
+  <Dialog open={!!modal} onOpenChange={v=>{if(!v && !busy){setModal(null);setError("");}}}><DialogContent className="nexus-dialog sm:max-w-[540px]">
+   {modal?.kind === "detail" ? (()=>{ const p=data.projects.find(x=>x.id===modal.id); if(!p) return null; return <><DialogHeader><div className="micro-label">PROYECTO / DETALLE</div><DialogTitle>{p.name}</DialogTitle><DialogDescription>{p.description || "Sin descripción"}</DialogDescription></DialogHeader><div className="detail-grid"><div><span>CATEGORÍA</span><strong>{p.category}</strong></div><div><span>ESTADO</span><strong>{p.status}</strong></div><div><span>MIEMBROS</span><strong>{p.memberIds.map(id=>memberName(data,id)).join(", ") || "Sin asignar"}</strong></div><div><span>TAREAS</span><strong>{data.tasks.filter(t=>t.projectId===p.id).length} registradas</strong></div></div><div className="dialog-actions"><button className="secondary-btn" onClick={()=>openEditor("project",p.id)}><Pencil size={15}/> Editar proyecto</button><button className="danger-btn" onClick={()=>remove("project",p.id)}><Trash2 size={15}/> Eliminar</button></div></>;})() : modal && <><DialogHeader><div className="micro-label">NEXUS / {modal.id ? "EDITAR" : "CREAR"}</div><DialogTitle>{modal.id ? "Editar" : modal.kind === "task" ? "Nueva" : "Nuevo"} {modal.kind === "project" ? "proyecto" : modal.kind === "member" ? "miembro" : "tarea"}</DialogTitle><DialogDescription>Completa los datos para mantener tu espacio actualizado.</DialogDescription></DialogHeader><form className="editor-form" onSubmit={save}>{error && <Alert variant="destructive" className="form-alert"><AlertDescription>{error}</AlertDescription></Alert>}
+    {modal.kind === "project" && <><label className="field"><span>Nombre del proyecto *</span><input value={project.name} onChange={e=>setProject({...project,name:e.target.value})} placeholder="Ej. Proyecto Aurora"/></label><label className="field"><span>Descripción</span><textarea value={project.description} onChange={e=>setProject({...project,description:e.target.value})} placeholder="¿De qué trata este proyecto?"/></label><div className="form-grid"><label className="field"><span>Categoría</span><input value={project.category} onChange={e=>setProject({...project,category:e.target.value})}/></label><label className="field"><span>Estado</span><select value={project.status} onChange={e=>setProject({...project,status:e.target.value})}><option>Planeado</option><option>En progreso</option><option>Completado</option></select></label></div><fieldset className="field"><legend>Miembros del equipo</legend><div className="member-options">{data.members.map(m=><label key={m.id}><input type="checkbox" checked={project.memberIds.includes(m.id)} onChange={e=>setProject({...project,memberIds:e.target.checked?[...project.memberIds,m.id]:project.memberIds.filter(id=>id!==m.id)})}/>{m.name}</label>)}{!data.members.length && <small>Primero agrega miembros al equipo.</small>}</div></fieldset></>}
+    {modal.kind === "member" && <><div className="form-grid"><label className="field"><span>Identificador *</span><input value={member.userId} onChange={e=>setMember({...member,userId:e.target.value})} placeholder="USR-004"/></label><label className="field"><span>Nombre *</span><input value={member.name} onChange={e=>setMember({...member,name:e.target.value})} placeholder="Nombre completo"/></label></div><div className="form-grid"><label className="field"><span>Correo *</span><input type="email" value={member.email} onChange={e=>setMember({...member,email:e.target.value})} placeholder="correo@ejemplo.com"/></label><label className="field"><span>Teléfono</span><input value={member.phone} onChange={e=>setMember({...member,phone:e.target.value})} placeholder="999 999 999"/></label></div><div className="form-grid"><label className="field"><span>Cargo</span><input value={member.position} onChange={e=>setMember({...member,position:e.target.value})} placeholder="Diseñador"/></label><label className="field"><span>Rol</span><select value={member.role} onChange={e=>setMember({...member,role:e.target.value})}><option>Miembro</option><option>Administrador</option><option>Invitado</option></select></label></div><div className="form-grid"><label className="field"><span>Proyecto</span><select value={member.projectId} onChange={e=>setMember({...member,projectId:e.target.value})}><option value="">Sin proyecto</option>{data.projects.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label><div className="field"><span>Fecha de nacimiento</span><button type="button" className="date-button" onClick={()=>setShowCalendar(!showCalendar)}><CalendarDays size={16}/>{member.birthdate || "Seleccionar fecha"}</button></div></div><label className="checkbox-field"><input type="checkbox" checked={member.isActive} onChange={e=>setMember({...member,isActive:e.target.checked})}/> Miembro activo</label></>}
+    {modal.kind === "task" && <><label className="field"><span>Descripción *</span><input value={task.description} onChange={e=>setTask({...task,description:e.target.value})} placeholder="¿Qué hay que hacer?"/></label><div className="form-grid"><label className="field"><span>Proyecto *</span><select value={task.projectId} onChange={e=>setTask({...task,projectId:e.target.value})}><option value="">Seleccionar proyecto</option>{data.projects.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label><label className="field"><span>Responsable *</span><select value={task.userId} onChange={e=>setTask({...task,userId:e.target.value})}><option value="">Seleccionar miembro</option>{data.members.map(m=><option value={m.id} key={m.id}>{m.name}</option>)}</select></label></div><div className="form-grid"><label className="field"><span>Estado</span><select value={task.status} onChange={e=>setTask({...task,status:e.target.value})}><option>Pendiente</option><option>En progreso</option><option>Completada</option></select></label><label className="field"><span>Prioridad</span><select value={task.priority} onChange={e=>setTask({...task,priority:e.target.value})}><option>Baja</option><option>Media</option><option>Alta</option><option>Urgente</option></select></label></div><div className="field"><span>Fecha límite *</span><button type="button" className="date-button" onClick={()=>setShowCalendar(!showCalendar)}><CalendarDays size={16}/>{task.deadline || "Seleccionar fecha"}</button></div></>}
+    {showCalendar && (modal.kind === "member" || modal.kind === "task") && <div className="calendar-wrap"><Calendar mode="single" selected={selectedDate} onSelect={selectDate} locale={es} captionLayout="dropdown" startMonth={new Date(1930, 0)} endMonth={new Date(2100, 11)}/></div>}
+    <div className="dialog-actions"><button type="button" className="secondary-btn" onClick={()=>setModal(null)} disabled={busy}>Cancelar</button><button type="submit" className="primary-btn" disabled={busy}>{busy ? <><Spinner/> Guardando...</> : <><Check size={16}/> Guardar cambios</>}</button></div>
+   </form></>}
+  </DialogContent></Dialog>
+ </main>;
 }
+function Metric({icon:Icon,label,value,note,accent}:{icon:typeof Activity;label:string;value:number;note:string;accent:string}) { return <div className="metric-card"><div className="metric-top"><span className={`metric-icon ${accent}`}><Icon size={18}/></span><ArrowDownRight size={16}/></div><div className="metric-value">{String(value).padStart(2,"0")}</div><strong>{label}</strong><small>{note}</small></div>; }
+function Empty({text}:{text:string}) { return <div className="empty-state"><CircleDashed size={23}/><p>{text}</p></div>; }
+
